@@ -1,0 +1,17 @@
+// src/entity/Software.ts
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+
+@Entity()
+export class Software {
+  @PrimaryGeneratedColumn()
+  id;
+
+  @Column()
+  name;
+
+  @Column('text')
+  description;
+
+  @Column("simple-array")
+  accessLevels; // e.g. ["Read", "Write", "Admin"]
+}
