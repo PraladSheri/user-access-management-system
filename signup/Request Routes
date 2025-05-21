@@ -1,0 +1,93 @@
+// src/routes/requests.js
+import express from 'express';
+import { getRepository } from 'typeorm';
+import { Request } from '../entity/Request.js';
+import { Software } from '../entity/Software.js';
+import { User } from '../entity/User.js';
+import { authenticateJWT, authorizeRoles } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// Submit access request - Employee only
+router.post('/', authenticateJWT, authorizeRoles('Employee'), async (req, res) => {
+  try {
+    const requestRepo = getRepository(Request);
+    const softwareRepo = getRepository(Software);
+    const userRepo = getRepository(User);
+
+    const { softwareId, accessType, reason } = req.body;
+    const software = await softwareRepo.findOne(softwareId);
+    if (!software) return res.status(404).json({ message: 'Software not found' });
+
+    // Check accessType is valid for software
+    if (!software.accessLevels.includes(accessType)) {
+      return res.status(400).json({ message: 'Invalid access type for software' });
+    }
+
+    const user = await userRepo.findOne(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const request = requestRepo.create({
+      user,
+      software,
+      accessType,
+      reason,
+      status: 'Pending',
+    });
+
+    await requestRepo.save(request);
+    res.status(201).json({ message: 'Request submitted' });
+  } catch (e) {
+    res.status(500).json({ message: 'Internal error' });
+  }
+});
+
+// Get all requests (optionally filtered by status) - Manager/Admin
+router.get('/', authenticateJWT, authorizeRoles('Manager', 'Admin'), async (req, res) => {
+  try {
+    const requestRepo = getRepository(Request);
+    const { status } = req.query;
+
+    let requests;
+    if (status) {
+      requests = await requestRepo.find({
+        where: { status },
+        relations: ['user', 'software'],
+      });
+    } else {
+      requests = await requestRepo.find({ relations: ['user', 'software'] });
+    }
+    res.json(requests);
+  } catch (e) {
+    res.status(500).json({ message: 'Internal error' });
+  }
+});
+
+// Approve or reject request - Manager only
+router.patch('/:id', authenticateJWT, authorizeRoles('Manager'), async (req, res) => {
+  try {
+    const requestRepo = getRepository(Request);
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['Approved', 'Rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const request = await requestRepo.findOne(id, { relations: ['user', 'software'] });
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+
+    if (request.status !== 'Pending') {
+      return res.status(400).json({ message: 'Request already processed' });
+    }
+
+    request.status = status;
+    await requestRepo.save(request);
+
+    res.json({ message: `Request ${status.toLowerCase()}` });
+  } catch (e) {
+    res.status(500).json({ message: 'Internal error' });
+  }
+});
+
+export default router;
