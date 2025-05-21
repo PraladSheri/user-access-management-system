@@ -1,0 +1,35 @@
+// src/routes/software.js
+import express from 'express';
+import { getRepository } from 'typeorm';
+import { Software } from '../entity/Software.js';
+import { authenticateJWT, authorizeRoles } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// Add new software - Admin only
+router.post('/', authenticateJWT, authorizeRoles('Admin'), async (req, res) => {
+  try {
+    const softwareRepo = getRepository(Software);
+    const { name, description, accessLevels } = req.body;
+
+    const software = softwareRepo.create({ name, description, accessLevels });
+    await softwareRepo.save(software);
+
+    res.status(201).json({ message: 'Software created', software });
+  } catch (e) {
+    res.status(500).json({ message: 'Internal error' });
+  }
+});
+
+// (Optional) Get all software - accessible by anyone logged in
+router.get('/', authenticateJWT, async (req, res) => {
+  try {
+    const softwareRepo = getRepository(Software);
+    const list = await softwareRepo.find();
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ message: 'Internal error' });
+  }
+});
+
+export default router;
